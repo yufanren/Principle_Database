@@ -66,9 +66,10 @@ def page_clubs():
     sql_all_clubs = 'select * from Clubs order by name;'
     all_clubs = query_db(sql_all_clubs)
     all_club_names = all_clubs['name'].tolist()
-    club_name = st.selectbox('Choose a club', all_clubs)
+    club_name = st.selectbox('Choose a club', all_club_names)
+
     club_row = all_clubs.loc[all_clubs['name'] == club_name]
-    st.write(f"{club_row['name'].values[0]} was founded in {club_row['year_founded'].values[0]} at {club_row['location'].values[0]}.")
+    st.write(f"{club_row['name'].values[0]} was founded in {club_row['year_founded'].values[0]} at {club_row['location'].values[0]}.")#
 
     options = ["Trips hosted", "Club members"]
     query_clubs = st.radio("What would you like to know?", options)
@@ -102,35 +103,35 @@ def score_board():
 #display user stats
 def user_stat():
     sql_all_unames = 'select name from Users_membership order by name'
-    all_unames = query_db(sql_all_unames)
+    all_unames = query_db(sql_all_unames)['name'].tolist()
     uname_sel = st.selectbox('Choose a user', all_unames)
 
     if uname_sel:
         user_info = query_db("select * from Users_membership where name = {};".format('\'' + uname_sel + '\''))
+        user_info_str = '  '.join([uname_sel, 'User ID: ' + str(user_info['userid'].values[0]), 'DOB: ' + str(user_info['dob'].values[0]), 'Club: ' + user_info['club'].values[0]])    
+        st.markdown(f"<h3 style='text-align: center; color: black;'>{user_info_str}</h3>", unsafe_allow_html=True)
+
         user_ascends = query_db("select RAD.name, ascend_date from (select name, UM.userid, ascend_date, UAR.rtid from Users_membership UM left outer join Users_Ascend_Routes UAR on UM.userid = UAR.userid where name = {}) UA left outer join Routes_have_Area_Discipline RAD on UA.rtid = RAD.rtid where RAD.name is not null;".format('\'' + uname_sel + '\''))
-        todo_list = query_db("select RAD.name from (select ToDo_List.rtid from Users_membership UM left outer join ToDo_List on UM.userid = ToDo_List.userid where name = {}) UL left outer join Routes_have_Area_Discipline RAD on UL.rtid = RAD.rtid where RAD.name is not null;".format('\'' + uname_sel + '\''))
-        partners_list = query_db("select name from (select climber2 as climber from Users_membership UM, Partners P where UM.userid = P.climber1 and name = {} union select climber1 as climber from Users_membership UM, Partners P where UM.userid = P.climber2 and name = {}) C, Users_membership UM where C.climber = UM.userid order by name".format('\'' + uname_sel + '\'', '\'' + uname_sel + '\''))
+        todo_list = query_db("select RAD.name from (select ToDo_List.rtid from Users_membership UM left outer join ToDo_List on UM.userid = ToDo_List.userid where name = {}) UL left outer join Routes_have_Area_Discipline RAD on UL.rtid = RAD.rtid where RAD.name is not null;".format('\'' + uname_sel + '\''))['name'].tolist()
+        partners_list = query_db("select name from (select climber2 as climber from Users_membership UM, Partners P where UM.userid = P.climber1 and name = {} union select climber1 as climber from Users_membership UM, Partners P where UM.userid = P.climber2 and name = {}) C, Users_membership UM where C.climber = UM.userid order by name".format('\'' + uname_sel + '\'', '\'' + uname_sel + '\''))['name'].tolist()
         
         ascendRt = user_ascends['name'].tolist()
         ascendDate = user_ascends['ascend_date'].tolist()
         ascendList = []
         for i in range(len(ascendRt)):
-            ascendList.append(ascendRt[i] + ' ' + str(ascendDate[i]))
+            ascendList.append(ascendRt[i] + '  ' + str(ascendDate[i]))
+
+        row_num = max(len(todo_list), len(partners_list), len(ascendList))
+        todo_list.extend([' ' for i in range(row_num - len(todo_list))])
+        partners_list.extend([' ' for i in range(row_num - len(partners_list))])
+        ascendList.extend([' ' for i in range(row_num - len(ascendList))])
+
         df_usr = {
-            'user info': '  '.join([uname_sel, 'User ID: ' + str(user_info['userid'].values[0]), 'DOB: ' + str(user_info['dob'].values[0]), 'Club: ' + user_info['club'].values[0]]),
-            'ascends': '<br>'.join(ascendList),
-            'todo list': '<br>'.join(todo_list['name'].tolist()),
-            'partners': '<br>'.join(partners_list['name'].tolist()),     
+            'ascends': ascendList,
+            'todo list': todo_list,
+            'partners': partners_list
         }
-        st.markdown(f"<h3 style='text-align: center; color: black;'>{df_usr['user info']}</h3>", unsafe_allow_html=True)
-        
-        cols = st.beta_columns(3)
-        cols[0].markdown(f"<h3 style='text-align: center;'>Ascends</h3>", unsafe_allow_html=True)
-        cols[1].markdown(f"<h3 style='text-align: center;'>To Do List</h3>", unsafe_allow_html=True)
-        cols[2].markdown(f"<h3 style='text-align: center;'>Partners</h3>", unsafe_allow_html=True)
-        cols[0].markdown(f"<body style='text-align: center;'>{df_usr['ascends']}</body>", unsafe_allow_html=True)
-        cols[1].markdown(f"<body style='text-align: center;'>{df_usr['todo list']}</body>", unsafe_allow_html=True)
-        cols[2].markdown(f"<body style='text-align: center;'>{df_usr['partners']}</body>", unsafe_allow_html=True)
+        st.table(df_usr)
 
 #query routes by rating
 def rt_by_ratings():
@@ -143,7 +144,6 @@ def rt_by_ratings():
         f'Routes with chosen quality or difficulty rating'
         sql_rt_rating = "select RT.rtid, name, length, area, discipline, features, quality, difficulty from (select rtid, name, length, area, discipline, coalesce (STRING_AGG(feature, ' '), ' ') features from Routes_have_Area_Discipline left outer join Routes_have_Features on rtid = route group by rtid ) RT, rt_rating where RT.rtid = rt_rating.rtid and {} = {} order by rtid;".format(mode, rating_slider)
         rt_list = query_db(sql_rt_rating)
-        rt_list.set_index('rtid', inplace=True)
         st.table(rt_list)
 
 #query routes by route name
@@ -155,7 +155,6 @@ def show_routes():
         rt_mulsel_str = ','.join(["'" + rt + "'" for rt in rt_names])
         sql_rt = f"select RT.rtid, name, length, area, discipline, features, quality, difficulty from (select rtid, name, length, area, discipline, coalesce (STRING_AGG(feature, ' '), ' ') features from Routes_have_Area_Discipline left outer join Routes_have_Features on rtid = route where name in ({rt_mulsel_str}) group by rtid ) RT, rt_rating where RT.rtid = rt_rating.rtid order by rtid;"
         rt_list = query_db(sql_rt)
-        rt_list.set_index('rtid', inplace=True)
         st.table(rt_list)
 
 #query routes by area and discipline
@@ -173,7 +172,6 @@ def query_routes():
         discipline_mulsel_str = ','.join(["'" + disc + "'" for disc in discipline_names])
         sql_rt = f"select RT.rtid, name, length, area, discipline, features, quality, difficulty from (select rtid, name, length, area, discipline, coalesce (STRING_AGG(feature, ' '), ' ') features from Routes_have_Area_Discipline left outer join Routes_have_Features on rtid = route where area in ({area_mulsel_str}) and discipline in ({discipline_mulsel_str}) group by rtid ) RT, rt_rating where RT.rtid = rt_rating.rtid order by rtid;"
         rt_list = query_db(sql_rt)
-        rt_list.set_index('rtid', inplace=True)
         st.table(rt_list)
 
 #refresh materialzed view on database server
@@ -185,5 +183,14 @@ def prepDB():
     conn.commit()
     cur.close()
     conn.close()
-
+    st.markdown("""
+    <style>
+    table td:nth-child(1) {
+        display: none
+    }
+    table th:nth-child(1) {
+        display: none
+    }
+    </style>
+    """, unsafe_allow_html=True)
 main()
