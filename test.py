@@ -102,36 +102,34 @@ def score_board():
 
 #display user stats
 def user_stat():
-    sql_all_unames = 'select name from Users_membership order by name'
+    sql_all_unames = 'select distinct name from Users_membership order by name'
     all_unames = query_db(sql_all_unames)['name'].tolist()
     uname_sel = st.selectbox('Choose a user', all_unames)
 
     if uname_sel:
         user_info = query_db("select * from Users_membership where name = {};".format('\'' + uname_sel + '\''))
-        user_info_str = '  '.join([uname_sel, 'User ID: ' + str(user_info['userid'].values[0]), 'DOB: ' + str(user_info['dob'].values[0]), 'Club: ' + user_info['club'].values[0]])    
-        st.markdown(f"<h3 style='text-align: center; color: black;'>{user_info_str}</h3>", unsafe_allow_html=True)
+        for i in range (len(user_info.index)):
 
-        user_ascends = query_db("select RAD.name, ascend_date from (select name, UM.userid, ascend_date, UAR.rtid from Users_membership UM left outer join Users_Ascend_Routes UAR on UM.userid = UAR.userid where name = {}) UA left outer join Routes_have_Area_Discipline RAD on UA.rtid = RAD.rtid where RAD.name is not null;".format('\'' + uname_sel + '\''))
-        todo_list = query_db("select RAD.name from (select ToDo_List.rtid from Users_membership UM left outer join ToDo_List on UM.userid = ToDo_List.userid where name = {}) UL left outer join Routes_have_Area_Discipline RAD on UL.rtid = RAD.rtid where RAD.name is not null;".format('\'' + uname_sel + '\''))['name'].tolist()
-        partners_list = query_db("select name from (select climber2 as climber from Users_membership UM, Partners P where UM.userid = P.climber1 and name = {} union select climber1 as climber from Users_membership UM, Partners P where UM.userid = P.climber2 and name = {}) C, Users_membership UM where C.climber = UM.userid order by name".format('\'' + uname_sel + '\'', '\'' + uname_sel + '\''))['name'].tolist()
+            user_info_str = '  '.join([uname_sel, 'User ID: ' + str(user_info['userid'].values[i]), 'DOB: ' + str(user_info['dob'].values[i]), 'Club: ' + (user_info['club'].values[i] if user_info['club'].values[i] is not None else ' ')])    
+            st.markdown(f"<h3 style='text-align: center; color: black;'>{user_info_str}</h3>", unsafe_allow_html=True)
+
+            user_ascends = query_db("select RAD.name, ascend_date from (select name, UM.userid, ascend_date, UAR.rtid from Users_membership UM left outer join Users_Ascend_Routes UAR on UM.userid = UAR.userid where UM.userid = {}) UA left outer join Routes_have_Area_Discipline RAD on UA.rtid = RAD.rtid where UA.rtid is not null;".format(user_info['userid'].values[i]))
+            todo_list = query_db("select RAD.name from (select ToDo_List.rtid from Users_membership UM left outer join ToDo_List on UM.userid = ToDo_List.userid where UM.userid = {}) UL left outer join Routes_have_Area_Discipline RAD on UL.rtid = RAD.rtid;".format(user_info['userid'].values[i]))['name'].tolist()
+            partners_list = query_db("select name from (select climber2 as climber from Users_membership UM, Partners P where UM.userid = P.climber1 and UM.userid = {} union select climber1 as climber from Users_membership UM, Partners P where UM.userid = P.climber2 and UM.userid = {}) C, Users_membership UM where C.climber = UM.userid order by name;".format(user_info['userid'].values[i], user_info['userid'].values[i]))['name'].tolist()
         
-        ascendRt = user_ascends['name'].tolist()
-        ascendDate = user_ascends['ascend_date'].tolist()
-        ascendList = []
-        for i in range(len(ascendRt)):
-            ascendList.append(ascendRt[i] + '  ' + str(ascendDate[i]))
+            ascendRt = user_ascends['name'].tolist()
+            ascendDate = user_ascends['ascend_date'].tolist()
+            ascendList = []
+            for i in range(len(ascendRt)):
+                ascendList.append(ascendRt[i] + '  ' + str(ascendDate[i]))
 
-        row_num = max(len(todo_list), len(partners_list), len(ascendList))
-        todo_list.extend([' ' for i in range(row_num - len(todo_list))])
-        partners_list.extend([' ' for i in range(row_num - len(partners_list))])
-        ascendList.extend([' ' for i in range(row_num - len(ascendList))])
-
-        df_usr = {
+            df_usr = {
             'ascends': ascendList,
             'todo list': todo_list,
             'partners': partners_list
-        }
-        st.table(df_usr)
+            }
+            st.table(makeTable(**df_usr))        	
+
 
 #query routes by rating
 def rt_by_ratings():
@@ -193,4 +191,13 @@ def prepDB():
     }
     </style>
     """, unsafe_allow_html=True)
+
+#make dataframe from lists with unequal sizes, for side-by-side display
+#can use streamlit.beta_columns instead after version 0.68
+def makeTable(**kwargs):
+	max_row = max(len(i) for i in kwargs.values())
+	for v in kwargs.values():
+		v.extend([' ' for i in range(max_row - len(v))])
+	return {k:kwargs[k] for k in kwargs}	
+
 main()

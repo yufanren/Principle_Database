@@ -47,14 +47,14 @@ create table Routes_have_Features (
 
 create table Clubs (
 	name varchar(32) primary key,
-	year_founded int not null,	
-	location varchar(128) not null
+	year_founded int,	
+	location varchar(128)
 );
 
 create table Users_membership (
 	userid serial primary key,
-	name varchar(32) not null,
-	dob date not null,
+	name varchar(32),
+	dob date,
 	club varchar(32),
 	foreign key (club) references Clubs (name)
 );
