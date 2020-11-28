@@ -28,10 +28,11 @@ def query_db(sql: str):
 def main():
     prepDB();
     pages = {
-        "Routes": page_routes,
-        "Users": page_users,
-        "Clubs": page_clubs,
-        "Databse": getDB,
+        "User Information": page_users,
+        "Area Information": page_areas,
+        "Route Information": page_routes,
+        "Club Information": page_clubs,
+        "Database Information": getDB,
     }
 
     st.sidebar.title("Select task")
@@ -54,8 +55,8 @@ def page_routes():
 def page_users():
     st.title('User Information')
     pages = {
-        "User stats": user_stat,
-        "Score board": score_board,
+        "Overall User Rankings": score_board,
+        "Individual User Statistics": user_stat,  
     }
     user_options = st.radio("Choose query mode", tuple(pages.keys()))
     pages[user_options]()
@@ -80,9 +81,68 @@ def page_clubs():
     club_info = query_db(sql_club_info)
     st.table(club_info)
 
+# main page for area information
+def page_areas():
+    st.title("Area Information")
+    all_countries = query_db('select distinct country from Areas order by country;')
+    country_names = all_countries['country'].tolist()
+    country_select = st.selectbox('Find Areas by Country', country_names)
+
+    if country_select:
+        area_sql = "select R.area, R.total_routes, SR.sport_routes, TR.trad_routes, B.boulder_routes from (select RAD.area, count(rtid) as total_routes from Areas A, Routes_have_Area_Discipline RAD where A.country = '{}' and RAD.area = A.name group by RAD.area) R left join (select RAD.area, count(rtid) as sport_routes from Areas A, Routes_have_Area_Discipline RAD where A.country = '{}' and RAD.area = A.name and RAD.discipline = 'Sport' group by RAD.area) SR on R.area = SR.area left join (select RAD.area, count(rtid) as trad_routes from Areas A, Routes_have_Area_Discipline RAD where A.country = '{}' and RAD.area = A.name and RAD.discipline = 'Traditional' group by RAD.area) TR on R.area = TR.area left join (select RAD.area, count(rtid) as boulder_routes from Areas A, Routes_have_Area_Discipline RAD where A.country = '{}' and RAD.area = A.name and RAD.discipline = 'Boulder' group by RAD.area) B on R.area = B.area;".format(country_select, country_select, country_select, country_select)
+        area_list = query_db(area_sql)
+        st.table(area_list)
+
+    area_input = st.text_input("Search Areas: ")
+
+    if area_input:
+
+        f'Choose Disciplines:'
+        typeSport = st.checkbox("Sport", value=True)
+        typeTrad = st.checkbox("Traditional", value=True)
+        typeBoulder = st.checkbox("Boulder", value=True)
+        typeOther = st.checkbox("Other", value=True)
+
+        curr_discipline = []
+
+        if typeSport:
+            curr_discipline.append("Sport")
+        if typeTrad:
+            curr_discipline.append("Traditional")
+        if typeBoulder:
+            curr_discipline.append("Boulder")
+        if typeOther:
+            curr_discipline.append("Ice")
+            curr_discipline.append("Mixed")
+
+        grade_count_sql = ""
+
+        # Order ascents based on column choice
+        order_choice = st.selectbox('Order Routes By:', ["Name", "Discipline", "Difficulty", "Quality"])
+        if (order_choice == "Difficulty" or order_choice == "Quality"):
+            curr_order = order_choice + " DESC"
+        else :
+            curr_order = order_choice
+
+        f'List of Routes at {area_input}'
+
+        curr_query = ""
+        for i in range (len(curr_discipline)):
+            curr_query += "select AR.name, AR.discipline, AR.length, RR.difficulty, RR.quality from (select A.name as area, RAD.rtid, RAD.name, RAD.discipline, RAD.length from Areas A, Routes_have_Area_Discipline RAD where A.name = RAD.area and A.name = '{}' and RAD.discipline = '{}') AR, rt_rating RR where AR.rtid = RR.rtid".format(area_input, curr_discipline[i])
+            if i < (len(curr_discipline) - 1):
+                curr_query += " UNION "
+            else:
+                curr_query += " order by {};".format(curr_order)
+
+        if (curr_query != ""):
+            area_stats = query_db(curr_query)
+            st.table(area_stats)
+
+
+
 #main page for showing all tables in database
 def getDB():
-    st.title('Database Information')
+    st.title('Database Tables (Raw)')
     sql_all_table_names = "select relname from pg_class where relkind='r' and relname !~ '^(pg_|sql_)' order by relname;"
     all_table_names = query_db(sql_all_table_names)['relname'].tolist()
     table_name = st.selectbox('Choose a table', all_table_names)
@@ -95,7 +155,8 @@ def getDB():
 
 #display user rankings based on scores earned
 def score_board():
-    sql_all_users = 'select * from user_score order by score desc'
+    f'User Rankings Based on Routes Ascended (quantity and difficulty)'
+    sql_all_users = 'select name, userid, score from user_score order by score desc'
     all_users = query_db(sql_all_users)
     all_users['rank'] = all_users['score'].rank(method = 'min', ascending = False)
     st.table(all_users)
@@ -104,31 +165,99 @@ def score_board():
 def user_stat():
     sql_all_unames = 'select distinct name from Users_membership order by name'
     all_unames = query_db(sql_all_unames)['name'].tolist()
-    uname_sel = st.selectbox('Choose a user', all_unames)
+    uname_sel = st.text_input('Search Users (Some sample users: Ashima, Jimmy, Sasha, Dai)')
 
     if uname_sel:
         user_info = query_db("select * from Users_membership where name = {};".format('\'' + uname_sel + '\''))
         for i in range (len(user_info.index)):
 
-            user_info_str = '  '.join([uname_sel, 'User ID: ' + str(user_info['userid'].values[i]), 'DOB: ' + str(user_info['dob'].values[i]), 'Club: ' + (user_info['club'].values[i] if user_info['club'].values[i] is not None else ' ')])    
+            user_info_str = '  '.join([uname_sel, ',  User ID: ' + str(user_info['userid'].values[i]), ',  DOB: ' + str(user_info['dob'].values[i]), ',  Club: ' + (user_info['club'].values[i] if user_info['club'].values[i] is not None else ' ')])    
             st.markdown(f"<h3 style='text-align: center; color: black;'>{user_info_str}</h3>", unsafe_allow_html=True)
 
-            user_ascends = query_db("select RAD.name, ascend_date from (select name, UM.userid, ascend_date, UAR.rtid from Users_membership UM left outer join Users_Ascend_Routes UAR on UM.userid = UAR.userid where UM.userid = {}) UA left outer join Routes_have_Area_Discipline RAD on UA.rtid = RAD.rtid where UA.rtid is not null;".format(user_info['userid'].values[i]))
-            todo_list = query_db("select RAD.name from (select ToDo_List.rtid from Users_membership UM left outer join ToDo_List on UM.userid = ToDo_List.userid where UM.userid = {}) UL left outer join Routes_have_Area_Discipline RAD on UL.rtid = RAD.rtid;".format(user_info['userid'].values[i]))['name'].tolist()
-            partners_list = query_db("select name from (select climber2 as climber from Users_membership UM, Partners P where UM.userid = P.climber1 and UM.userid = {} union select climber1 as climber from Users_membership UM, Partners P where UM.userid = P.climber2 and UM.userid = {}) C, Users_membership UM where C.climber = UM.userid order by name;".format(user_info['userid'].values[i], user_info['userid'].values[i]))['name'].tolist()
-        
-            ascendRt = user_ascends['name'].tolist()
-            ascendDate = user_ascends['ascend_date'].tolist()
-            ascendList = []
-            for i in range(len(ascendRt)):
-                ascendList.append(ascendRt[i] + '  ' + str(ascendDate[i]))
+            uid = user_info['userid'].values[i]
 
-            df_usr = {
-            'ascends': ascendList,
-            'todo list': todo_list,
-            'partners': partners_list
+            # Basic statistics on this climber
+            f"{uname_sel}'s Ascent Totals by Difficulty:"
+            sql_ascents = "select RR.difficulty, count (RR.rtid) as ascent_count from Users_Ascend_Routes UAR, rt_rating RR where UAR.rtid = RR.rtid and UAR.userid = {} and RR.difficulty > 0 group by RR.difficulty order by RR.difficulty DESC;".format(uid)
+            ascent_breakdown = query_db(sql_ascents)
+            st.table(ascent_breakdown)
+
+    
+            # View different lists for individual climber
+            choices = {
+            "Ascent List": user_ascents,
+            "To Do List": user_toDos,
+            "Partner List": user_partners,
+            "Areas Visited": user_areas
             }
-            st.table(makeTable(**df_usr))        	
+            
+            user_choices = st.radio(uname_sel + "'s Climbing Lists:", tuple(choices.keys()), key = str(uid))
+            choices[user_choices](uid)
+
+
+#query routes ascended by a user
+def user_ascents(userid):
+
+    f'Choose Ascent Disciplines:'
+    typeSport = st.checkbox("Sport", value=True, key=str(userid))
+    typeTrad = st.checkbox("Traditional", value=True, key=str(userid))
+    typeBoulder = st.checkbox("Boulder", value=True, key=str(userid))
+    typeOther = st.checkbox("Other", value=True, key=str(userid))
+
+    curr_discipline = []
+
+    if typeSport:
+        curr_discipline.append("Sport")
+    if typeTrad:
+        curr_discipline.append("Traditional")
+    if typeBoulder:
+        curr_discipline.append("Boulder")
+    if typeOther:
+        curr_discipline.append("Ice")
+        curr_discipline.append("Mixed")
+
+
+    # Order ascents based on column choice
+    order_choice = st.selectbox('Order Ascents By:', ["Name", "Area", "Discipline", "Difficulty", "Quality", "Date"], key=str(userid))
+    if order_choice == "Date":
+        curr_order = "ascend_date DESC"
+    elif (order_choice == "Difficulty" or order_choice == "Quality"):
+        curr_order = order_choice + " DESC"
+    else :
+        curr_order = order_choice
+
+
+    curr_query = ""
+    for i in range (len(curr_discipline)):
+        curr_query += "select UA.name, UA.area, UA.discipline, RR.difficulty, RR.quality, UA.ascend_date from (select UAR.userid, UAR.rtid, RAD.name, RAD.area, RAD.discipline, UAR.ascend_date from Users_Ascend_Routes UAR, Routes_have_Area_Discipline RAD where UAR.rtid = RAD.rtid and UAR.userid = {} and RAD.discipline = '{}') UA, rt_rating RR where UA.rtid = RR.rtid".format(userid, curr_discipline[i])
+        if i < (len(curr_discipline) - 1):
+            curr_query += " UNION "
+        else:
+            curr_query += " order by {};".format(curr_order)
+
+    if (curr_query != ""):
+        ascent_list = query_db(curr_query)
+        st.table(ascent_list)
+
+
+#query routes on a users to do list
+def user_toDos(userid):
+    curr_order = st.selectbox('Order To Do List By:', ["Name", "Area", "Discipline", "Difficulty", "Quality"], key=str(userid))
+    if (curr_order == "Difficulty" or curr_order == "Quality"):
+        curr_order += " DESC"
+
+    toDo_list = query_db("select UA.name, UA.area, UA.discipline, RR.difficulty, RR.quality from (select UAR.userid, UAR.rtid, RAD.name, RAD.area, RAD.discipline from ToDo_List UAR, Routes_have_Area_Discipline RAD where UAR.rtid = RAD.rtid and UAR.userid = {}) UA, rt_rating RR where UA.rtid = RR.rtid order by {};".format(userid, curr_order))
+    st.table(toDo_list)
+
+#query user partners
+def user_partners(userid):
+    partners_list = query_db("select name, dob, club from (select climber2 as climber from Users_membership UM, Partners P where UM.userid = P.climber1 and UM.userid = {} UNION select climber1 as climber from Users_membership UM, Partners P where UM.userid = P.climber2 and UM.userid = {}) C, Users_membership UM where C.climber = UM.userid order by name;".format(userid, userid))
+    st.table(partners_list)
+
+#query user areas
+def user_areas(userid):
+    area_list = query_db("select A.name, A.country from (select distinct area from Users_Ascend_Routes UAR, Routes_have_Area_Discipline RAD where UAR.rtid = RAD.rtid and UAR.userid = {}) UA, Areas A where UA.area = A.name order by country;".format(userid))
+    st.table(area_list)
 
 
 #query routes by rating
@@ -154,7 +283,7 @@ def show_routes():
         sql_rt = f"select RT.rtid, name, length, area, discipline, features, quality, difficulty from (select rtid, name, length, area, discipline, coalesce (STRING_AGG(feature, ' '), ' ') features from Routes_have_Area_Discipline left outer join Routes_have_Features on rtid = route where name in ({rt_mulsel_str}) group by rtid ) RT, rt_rating where RT.rtid = rt_rating.rtid order by rtid;"
         rt_list = query_db(sql_rt)
         st.table(rt_list)
-
+        
 #query routes by area and discipline
 def query_routes():
     sql_all_areas = 'select name from Areas order by name;'
