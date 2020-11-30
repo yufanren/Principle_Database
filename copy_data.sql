@@ -51,21 +51,3 @@ delimiter ',' CSV HEADER;
 COPY Ratings (difficulty, quality, user_comment, comment_time, commenter, route) from 
 '/home/yufan/Public/data/Ratings.csv'
 delimiter ',' CSV HEADER;
-
-
-create materialized view rt_rating as 
-select rtid, round(avg(quality), 1) quality, round(avg(difficulty), 1) difficulty
-from Routes_have_Area_Discipline left outer join Ratings
-on rtid = route
-group by rtid
-order by rtid;
-
-create materialized view user_score as 
-select userid, name, round(coalesce(sum(((count - 1) * 0.25 + 1) * difficulty), 0), 1) score
-from (select UM.userid, name, rtid, count(rtid) count
-      from Users_membership UM left outer join Users_Ascend_Routes UAR
-      on UM.userid = UAR.userid
-      group by UM.userid, name, rtid) UR left outer join rt_rating RR
-on UR.rtid = RR.rtid
-group by userid, name
-order by userid;
